@@ -1,7 +1,6 @@
-use std::{task::Poll, time::Duration};
-
-use tokio::{io::{AsyncRead, AsyncWrite}, runtime::Builder, time::{self, sleep}};
 use uuid::{Uuid};
+use std::{task::Poll, time::Duration};
+use tokio::{io::{AsyncRead, AsyncWrite}, runtime::Builder, time::{self, sleep}};
 
 use crate::{common::device::SPP_UUID, BluetoothDevice, BluetoothError, BluetoothSppSession};
 

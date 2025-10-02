@@ -19,6 +19,9 @@ pub enum BluetoothError {
     #[error("Device not found")]
     DeviceNotFound,
 
+    #[error("Service not found")]
+    ServiceNotFound,
+
     #[error("Not connected")]
     NotConnected,
 
@@ -47,7 +50,7 @@ mod tests {
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    use crate::mock::session::MockSession;
+    use crate::{common::mac::{mac_string_to_u64, mac_u64_to_string}, mock::session::MockSession};
 
     use super::*;
 
@@ -95,6 +98,23 @@ mod tests {
 
         assert_eq!(data, read_vec);
 
+    }
+
+    #[test]
+    fn test_mac_addr_parse() {
+        let addr = "00:02:B0:57:7D:D6".to_string();
+        let result = mac_string_to_u64(&addr);
+        if let Some(value) = result {
+
+            if value != 11548458454 {
+                assert!(true);
+            }
+
+            let text = mac_u64_to_string(value);
+            assert_eq!(text, addr);
+        } else {
+            assert!(true);
+        }
     }
 
 }

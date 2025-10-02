@@ -1,0 +1,13 @@
+[package]
+name = "bluetooth-classic"
+version = "0.1.0"
+edition = "2024"
+
+[dev-dependencies]
+tokio-test = "*"
+
+[dependencies]
+thiserror = "2.0.17"
+tokio = {version = "1.47.1", features = ["time", "rt", "rt-multi-thread", "io-util"]}
+uuid = "1.18.1"
+crossbeam = "0.8.4"

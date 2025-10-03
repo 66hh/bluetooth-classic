@@ -1,10 +1,10 @@
 use std::task::Poll;
 
-use windows::{Devices::{Bluetooth::{self}, Enumeration::DeviceInformation}, Networking::Sockets::StreamSocket};
+use windows::{Devices::{Bluetooth::{self}, Enumeration::{DeviceInformation, DevicePairingKinds}}, Foundation::TypedEventHandler, Networking::Sockets::StreamSocket};
 use tokio::{io::{AsyncRead, AsyncWrite}, runtime::Builder, time};
 use uuid::Uuid;
 
-use crate::{common::device::{BluetoothDevice, SPP_UUID}, windows::{utils::{winrt_async_action, winrt_async_with_error, winrt_error_wrap, winrt_error_wrap_with_error}, uuid::create_service_id}, BluetoothError, BluetoothSppSession};
+use crate::{common::device::{BluetoothDevice, SPP_UUID}, windows::{pair::pair_handler, utils::{winrt_async, winrt_async_action, winrt_async_with_error, winrt_error_wrap, winrt_error_wrap_with_error, winrt_none_error_wrap_with_error}, uuid::create_service_id}, BluetoothError, BluetoothSppSession};
 
 pub struct WinrtSession {
     uuid: Uuid,
@@ -114,20 +114,45 @@ impl BluetoothSppSession for WinrtSession {
         // 是否需要配对
         if need_pairing {
 
-            let pairing = winrt_error_wrap_with_error(
-                device_info.Pairing(),
+            // 这里要从创建的对象里重新拿一下info
+            let info = winrt_error_wrap_with_error(
+                winrt_device.DeviceInformation(),
                 BluetoothError::DeviceNotPairing
             )?;
 
+            let pairing = winrt_error_wrap_with_error(
+                info.Pairing(),
+                BluetoothError::DeviceNotPairing
+            )?;
+
+            let can_pair = winrt_error_wrap_with_error(pairing.CanPair(), BluetoothError::DeviceNotPairing)?;
+            let is_paired = winrt_error_wrap_with_error(pairing.IsPaired(), BluetoothError::DeviceNotPairing)?;
+
             // 查询是否可配对以及是否已经配对
-            if winrt_error_wrap_with_error(pairing.CanPair(), BluetoothError::DeviceNotPairing)? &&
-                !winrt_error_wrap_with_error(pairing.IsPaired(), BluetoothError::DeviceNotPairing)? {
-                
-                // 执行配对
-                winrt_async_with_error(
-                    pairing.PairAsync(),
+            if can_pair && !is_paired {
+                let custom = winrt_error_wrap_with_error(
+                    pairing.Custom(),
                     BluetoothError::DeviceNotPairing
+                )?;
+
+                // 弹出授权窗口
+                let handler = winrt_error_wrap_with_error(
+                    custom.PairingRequested(&TypedEventHandler::new(pair_handler)),
+                    BluetoothError::DeviceNotPairing
+                )?;
+
+                // 配对
+                winrt_async(
+                    // 目前只处理直接就能配对的
+                    custom.PairAsync(DevicePairingKinds::ConfirmOnly)
                 ).await?;
+
+                // 删除handler
+                winrt_none_error_wrap_with_error(
+                    custom.RemovePairingRequested(handler),
+                    BluetoothError::DeviceNotPairing
+                )?;
+
             }
         }
         
@@ -135,8 +160,6 @@ impl BluetoothSppSession for WinrtSession {
         let service_id = winrt_error_wrap(
             create_service_id(self.uuid)
         )?;
-
-        // ------------------------------ 获取服务还有问题
 
         // 获取特定服务
         let winrt_service_list = winrt_async_with_error(

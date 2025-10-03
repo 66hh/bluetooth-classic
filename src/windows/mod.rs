@@ -1,6 +1,5 @@
-mod uuid;
-mod utils;
-
+pub mod uuid;
+pub mod utils;
 pub mod session;
 
 #[cfg(test)]

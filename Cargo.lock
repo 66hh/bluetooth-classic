@@ -70,6 +70,7 @@ dependencies = [
  "tokio-test",
  "uuid",
  "windows",
+ "windows-future",
 ]
 
 [[package]]

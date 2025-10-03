@@ -12,3 +12,4 @@ tokio = {version = "1.47.1", features = ["time", "rt", "rt-multi-thread", "io-ut
 uuid = "1.18.1"
 crossbeam = "0.8.4"
 windows = {version = "0.62.1", features = ["Foundation_Collections", "Devices_Bluetooth", "Devices_Bluetooth_Rfcomm", "Networking_Sockets", "Storage_Streams", "Devices_Enumeration"]}
+windows-future = "0.3.1"

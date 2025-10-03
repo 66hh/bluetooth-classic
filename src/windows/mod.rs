@@ -1,4 +1,5 @@
 mod uuid;
+mod utils;
 
 pub mod session;
 

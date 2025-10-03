@@ -1,10 +1,10 @@
-use std::{ptr::{null, null_mut}, task::Poll};
+use std::task::Poll;
 
-use windows::{core::HSTRING, Devices::Bluetooth::{self}, Networking::Sockets::StreamSocket};
+use windows::{Devices::Bluetooth::{self}, Networking::Sockets::StreamSocket};
 use tokio::{io::{AsyncRead, AsyncWrite}, runtime::Builder, time};
 use uuid::Uuid;
 
-use crate::{common::device::{BluetoothDevice, SPP_UUID}, windows::uuid::create_service_id, BluetoothError, BluetoothSppSession};
+use crate::{common::device::{BluetoothDevice, SPP_UUID}, windows::{utils::{winrt_async_action, winrt_async_with_error, winrt_error_wrap, winrt_error_wrap_with_error}, uuid::create_service_id}, BluetoothError, BluetoothSppSession};
 
 pub struct WinrtSession {
     uuid: Uuid,
@@ -79,70 +79,43 @@ impl BluetoothSppSession for WinrtSession {
         self.ready = false;
 
         let addr = self.device.addr();
-        let async_operation;
-        match Bluetooth::BluetoothDevice::FromBluetoothAddressAsync(addr) {
-            Ok(op) => async_operation = op,
-            Err(err) => return Err(BluetoothError::RuntimeError(err.to_string())),
-        }
+        let winrt_device = winrt_async_with_error(
+            Bluetooth::BluetoothDevice::FromBluetoothAddressAsync(addr),
+            BluetoothError::DeviceNotFound
+        ).await?;
 
-        let winrt_device;
-        match async_operation.await {
-            Ok(device) => winrt_device = device,
-            Err(_) => return Err(BluetoothError::DeviceNotFound),
-        };
+        let service_id = winrt_error_wrap(
+            create_service_id(self.uuid)
+        )?;
 
-        let service_id;
-        match create_service_id(self.uuid) {
-            Ok(id) => service_id = id,
-            Err(err) => return Err(BluetoothError::RuntimeError(err.to_string())),
-        }
-
-        let async_operation;
-        match winrt_device.GetRfcommServicesForIdAsync(&service_id) {
-            Ok(op) => async_operation = op,
-            Err(err) => return Err(BluetoothError::RuntimeError(err.to_string())),
-        }
-
-        let winrt_service_list;
-        match async_operation.await {
-            Ok(service) => winrt_service_list = service,
-            Err(_) => return Err(BluetoothError::DeviceNotFound),
-        };
+        let winrt_service_list = winrt_async_with_error(
+            winrt_device.GetRfcommServicesForIdAsync(&service_id),
+            BluetoothError::ServiceNotFound
+        ).await?;
         
-        let list_services;
-        match winrt_service_list.Services() {
-            Ok(ss) => list_services = ss,
-            Err(_) => return Err(BluetoothError::ServiceNotFound),
-        }
+        let list_services = winrt_error_wrap_with_error(
+            winrt_service_list.Services(),
+            BluetoothError::ServiceNotFound
+        )?;
 
-        println!("{:?}", winrt_device.GetRfcommServicesAsync().unwrap().await.unwrap().Services().unwrap().First().unwrap().Current());
+        let service_result = winrt_error_wrap_with_error(
+            list_services.First(),
+            BluetoothError::ServiceNotFound
+        )?;
 
-        let service_result;
-        match list_services.First() {
-            Ok(res) => service_result = res,
-            Err(_) => return Err(BluetoothError::ServiceNotFound),
-        }
 
-        let winrt_service;
-        match service_result.Current() {
-            Ok(ws) => winrt_service = ws,
-            Err(_) => return Err(BluetoothError::ServiceNotFound),
-        }
+        let winrt_service = winrt_error_wrap_with_error(
+            service_result.Current(),
+            BluetoothError::ServiceNotFound
+        )?;
 
-        self.socket = StreamSocket::new().unwrap();
+        self.socket = winrt_error_wrap(
+            StreamSocket::new()
+        )?;
 
-        let async_operation;
-        match self.socket.ConnectAsync(
-            &winrt_service.ConnectionHostName().unwrap(),
-            &winrt_service.ConnectionServiceName().unwrap(),
-        ) {
-            Ok(op) => async_operation = op,
-            Err(err) => return Err(BluetoothError::RuntimeError(err.to_string())),
-        }
-
-        if let Err(_) = async_operation.await {
-            return Err(BluetoothError::NotConnected);
-        }
+        winrt_async_action(
+            self.socket.ConnectAsync(&winrt_service.ConnectionHostName().unwrap(), &winrt_service.ConnectionServiceName().unwrap())
+        ).await?;
 
         self.ready = true;
 

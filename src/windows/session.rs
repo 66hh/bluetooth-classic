@@ -1,6 +1,6 @@
 use std::task::Poll;
 
-use windows::{Devices::Bluetooth::{self}, Networking::Sockets::StreamSocket};
+use windows::{Devices::{Bluetooth::{self}, Enumeration::DeviceInformation}, Networking::Sockets::StreamSocket};
 use tokio::{io::{AsyncRead, AsyncWrite}, runtime::Builder, time};
 use uuid::Uuid;
 
@@ -28,26 +28,26 @@ impl WinrtSession {
 
 impl BluetoothSppSession for WinrtSession {
 
-    fn connect(&mut self, device: &BluetoothDevice) -> crate::Result<()> {
-        self.connect_by_uuid(device, SPP_UUID)
+    fn connect(&mut self, device: &BluetoothDevice, need_pairing: bool) -> crate::Result<()> {
+        self.connect_by_uuid(device, SPP_UUID, need_pairing)
     }
 
-    fn connect_timeout(&mut self, device: &BluetoothDevice, timeout: std::time::Duration) -> crate::Result<()> {
-        self.connect_by_uuid_timeout(device, SPP_UUID, timeout)
+    fn connect_timeout(&mut self, device: &BluetoothDevice, need_pairing: bool, timeout: std::time::Duration) -> crate::Result<()> {
+        self.connect_by_uuid_timeout(device, SPP_UUID, need_pairing, timeout)
     }
 
-    fn connect_by_uuid(&mut self, device: &BluetoothDevice, uuid: Uuid) -> crate::Result<()> {
+    fn connect_by_uuid(&mut self, device: &BluetoothDevice, uuid: Uuid, need_pairing: bool) -> crate::Result<()> {
         let rt = Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap();
 
         rt.block_on(async {
-            self.connect_by_uuid_async(device, uuid).await
+            self.connect_by_uuid_async(device, uuid, need_pairing).await
         })
     }
 
-    fn connect_by_uuid_timeout(&mut self, device: &BluetoothDevice, uuid: Uuid, timeout: std::time::Duration) -> crate::Result<()> {
+    fn connect_by_uuid_timeout(&mut self, device: &BluetoothDevice, uuid: Uuid, need_pairing: bool, timeout: std::time::Duration) -> crate::Result<()> {
 
         let rt = Builder::new_multi_thread()
             .enable_all()
@@ -56,7 +56,7 @@ impl BluetoothSppSession for WinrtSession {
 
         let result = rt.block_on(async {
             time::timeout(timeout, async {
-                self.connect_by_uuid_async(device, uuid).await
+                self.connect_by_uuid_async(device, uuid, need_pairing).await
             })
             .await
         });
@@ -70,7 +70,7 @@ impl BluetoothSppSession for WinrtSession {
         return Ok(())
     }
 
-    async fn connect_by_uuid_async(&mut self, device: &BluetoothDevice, uuid: Uuid) -> crate::Result<()> {
+    async fn connect_by_uuid_async(&mut self, device: &BluetoothDevice, uuid: Uuid, need_pairing: bool) -> crate::Result<()> {
 
         let _ = self.socket.Close();
 
@@ -78,41 +78,94 @@ impl BluetoothSppSession for WinrtSession {
         self.uuid = uuid;
         self.ready = false;
 
+        // 获取查询过滤器
         let addr = self.device.addr();
-        let winrt_device = winrt_async_with_error(
-            Bluetooth::BluetoothDevice::FromBluetoothAddressAsync(addr),
+        let winrt_device_filter = winrt_error_wrap(
+            Bluetooth::BluetoothDevice::GetDeviceSelectorFromBluetoothAddress(addr)
+        )?;
+
+        // 查询设备
+        let winrt_device_list = winrt_async_with_error(
+            DeviceInformation::FindAllAsyncAqsFilter(&winrt_device_filter),
             BluetoothError::DeviceNotFound
         ).await?;
 
+        if winrt_error_wrap_with_error(winrt_device_list.Size(), BluetoothError::DeviceNotFound)? < 1 {
+            return Err(BluetoothError::DeviceNotFound);
+        }
+
+        // 获取设备信息
+        let device_info = winrt_error_wrap_with_error(
+            winrt_device_list.GetAt(0),
+            BluetoothError::DeviceNotFound
+        )?;
+
+        // 创建设备对象
+        let winrt_device = winrt_async_with_error(
+            Bluetooth::BluetoothDevice::FromIdAsync(
+                &winrt_error_wrap_with_error(
+                    device_info.Id(),
+                    BluetoothError::DeviceNotFound
+                )?
+            ),
+            BluetoothError::DeviceNotFound
+        ).await?;
+
+        // 是否需要配对
+        if need_pairing {
+
+            let pairing = winrt_error_wrap_with_error(
+                device_info.Pairing(),
+                BluetoothError::DeviceNotPairing
+            )?;
+
+            // 查询是否可配对以及是否已经配对
+            if winrt_error_wrap_with_error(pairing.CanPair(), BluetoothError::DeviceNotPairing)? &&
+                !winrt_error_wrap_with_error(pairing.IsPaired(), BluetoothError::DeviceNotPairing)? {
+                
+                // 执行配对
+                winrt_async_with_error(
+                    pairing.PairAsync(),
+                    BluetoothError::DeviceNotPairing
+                ).await?;
+            }
+        }
+        
+        // 创建服务uuid
         let service_id = winrt_error_wrap(
             create_service_id(self.uuid)
         )?;
 
+        // ------------------------------ 获取服务还有问题
+
+        // 获取特定服务
         let winrt_service_list = winrt_async_with_error(
             winrt_device.GetRfcommServicesForIdAsync(&service_id),
             BluetoothError::ServiceNotFound
         ).await?;
         
+        // 获取服务列表
         let list_services = winrt_error_wrap_with_error(
             winrt_service_list.Services(),
             BluetoothError::ServiceNotFound
         )?;
 
-        let service_result = winrt_error_wrap_with_error(
-            list_services.First(),
-            BluetoothError::ServiceNotFound
-        )?;
+        if winrt_error_wrap_with_error(list_services.Size(), BluetoothError::DeviceNotFound)? < 1 {
+            return Err(BluetoothError::ServiceNotFound);
+        }
 
-
+        // 获取服务对象
         let winrt_service = winrt_error_wrap_with_error(
-            service_result.Current(),
+            list_services.GetAt(0),
             BluetoothError::ServiceNotFound
         )?;
 
+        // 创建socket
         self.socket = winrt_error_wrap(
             StreamSocket::new()
         )?;
 
+        // 发起连接
         winrt_async_action(
             self.socket.ConnectAsync(&winrt_service.ConnectionHostName().unwrap(), &winrt_service.ConnectionServiceName().unwrap())
         ).await?;
@@ -122,8 +175,8 @@ impl BluetoothSppSession for WinrtSession {
         Ok(())
     }
 
-    async fn connect_async(&mut self, device: &BluetoothDevice) -> crate::Result<()> {
-        self.connect_by_uuid_async(device, SPP_UUID).await
+    async fn connect_async(&mut self, device: &BluetoothDevice, need_pairing: bool) -> crate::Result<()> {
+        self.connect_by_uuid_async(device, SPP_UUID, need_pairing).await
     }
 
     fn device(&self) -> &BluetoothDevice {

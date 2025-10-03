@@ -7,6 +7,7 @@ use crate::{common::device::SPP_UUID, BluetoothDevice, BluetoothError, Bluetooth
 pub struct MockSession {
     uuid: Uuid,
     device: BluetoothDevice,
+    need_pairing: bool,
     blocked: bool,
     buffer: Vec<u8>,
     position: usize,
@@ -19,6 +20,7 @@ impl MockSession {
         return MockSession {
             uuid: SPP_UUID,
             device: BluetoothDevice::empty(),
+            need_pairing: true,
             blocked: false,
             buffer: Vec::new(),
             position: 0,
@@ -34,26 +36,26 @@ impl MockSession {
 
 impl BluetoothSppSession for MockSession {
 
-    fn connect(&mut self, device: &BluetoothDevice) -> crate::Result<()> {
-        self.connect_by_uuid(device, SPP_UUID)
+    fn connect(&mut self, device: &BluetoothDevice, need_pairing: bool) -> crate::Result<()> {
+        self.connect_by_uuid(device, SPP_UUID, need_pairing)
     }
 
-    fn connect_timeout(&mut self, device: &BluetoothDevice, timeout: std::time::Duration) -> crate::Result<()> {
-        self.connect_by_uuid_timeout(device, SPP_UUID, timeout)
+    fn connect_timeout(&mut self, device: &BluetoothDevice, need_pairing: bool, timeout: std::time::Duration) -> crate::Result<()> {
+        self.connect_by_uuid_timeout(device, SPP_UUID, need_pairing, timeout)
     }
 
-    fn connect_by_uuid(&mut self, device: &BluetoothDevice, uuid: Uuid) -> crate::Result<()> {
+    fn connect_by_uuid(&mut self, device: &BluetoothDevice, uuid: Uuid, need_pairing: bool) -> crate::Result<()> {
         let rt = Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap();
 
         rt.block_on(async {
-            self.connect_by_uuid_async(device, uuid).await
+            self.connect_by_uuid_async(device, uuid, need_pairing).await
         })
     }
 
-    fn connect_by_uuid_timeout(&mut self, device: &BluetoothDevice, uuid: Uuid, timeout: std::time::Duration) -> crate::Result<()> {
+    fn connect_by_uuid_timeout(&mut self, device: &BluetoothDevice, uuid: Uuid, need_pairing: bool, timeout: std::time::Duration) -> crate::Result<()> {
 
         let rt = Builder::new_multi_thread()
             .enable_all()
@@ -62,7 +64,7 @@ impl BluetoothSppSession for MockSession {
 
         let result = rt.block_on(async {
             time::timeout(timeout, async {
-                self.connect_by_uuid_async(device, uuid).await
+                self.connect_by_uuid_async(device, uuid, need_pairing).await
             })
             .await
         });
@@ -76,9 +78,10 @@ impl BluetoothSppSession for MockSession {
         return Ok(())
     }
 
-    async fn connect_by_uuid_async(&mut self, device: &BluetoothDevice, uuid: Uuid) -> crate::Result<()> {
+    async fn connect_by_uuid_async(&mut self, device: &BluetoothDevice, uuid: Uuid, need_pairing: bool) -> crate::Result<()> {
         self.device = device.clone();
         self.uuid = uuid;
+        self.need_pairing = need_pairing;
 
         while self.blocked {
             sleep(Duration::from_millis(10)).await;
@@ -87,8 +90,8 @@ impl BluetoothSppSession for MockSession {
         Ok(())
     }
 
-    async fn connect_async(&mut self, device: &BluetoothDevice) -> crate::Result<()> {
-        self.connect_by_uuid_async(device, SPP_UUID).await
+    async fn connect_async(&mut self, device: &BluetoothDevice, need_pairing: bool) -> crate::Result<()> {
+        self.connect_by_uuid_async(device, SPP_UUID, need_pairing).await
     }
 
     fn device(&self) -> &BluetoothDevice {

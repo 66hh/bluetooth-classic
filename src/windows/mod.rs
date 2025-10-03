@@ -38,7 +38,7 @@ mod tests {
         let mut winrt = WinrtSession::new();
         let device = BluetoothDevice::new_by_addr_string("Test".to_string(), &"D0:AE:05:05:1A:22".to_string()).unwrap();
 
-        let err = winrt.connect_timeout(&device, Duration::from_secs(5));
+        let err = winrt.connect_timeout(&device, true, Duration::from_secs(500));
         if let Err(e) = err {
             println!("{}", e.to_string())
         }

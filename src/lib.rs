@@ -19,6 +19,9 @@ pub enum BluetoothError {
     #[error("Device not found")]
     DeviceNotFound,
 
+    #[error("Device not pairing")]
+    DeviceNotPairing,
+
     #[error("Service not found")]
     ServiceNotFound,
 
@@ -35,12 +38,12 @@ pub enum BluetoothError {
 pub type Result<T> = result::Result<T, BluetoothError>;
 
 pub trait BluetoothSppSession : AsyncRead + AsyncWrite {
-    fn connect(&mut self, device: &BluetoothDevice) -> Result<()>;
-    fn connect_timeout(&mut self, device: &BluetoothDevice, timeout: Duration) -> Result<()>;
-    fn connect_by_uuid(&mut self, device: &BluetoothDevice, uuid: Uuid) -> Result<()>;
-    fn connect_by_uuid_timeout(&mut self, device: &BluetoothDevice, uuid: Uuid, timeout: Duration) -> Result<()>;
-    fn connect_async(&mut self, device: &BluetoothDevice) -> impl std::future::Future<Output = Result<()>>;
-    fn connect_by_uuid_async(&mut self, device: &BluetoothDevice, uuid: Uuid) -> impl std::future::Future<Output = Result<()>>;
+    fn connect(&mut self, device: &BluetoothDevice, need_pairing: bool) -> Result<()>;
+    fn connect_timeout(&mut self, device: &BluetoothDevice, need_pairing: bool, timeout: Duration) -> Result<()>;
+    fn connect_by_uuid(&mut self, device: &BluetoothDevice, uuid: Uuid, need_pairing: bool) -> Result<()>;
+    fn connect_by_uuid_timeout(&mut self, device: &BluetoothDevice, uuid: Uuid, need_pairing: bool, timeout: Duration) -> Result<()>;
+    fn connect_async(&mut self, device: &BluetoothDevice, need_pairing: bool) -> impl std::future::Future<Output = Result<()>>;
+    fn connect_by_uuid_async(&mut self, device: &BluetoothDevice, uuid: Uuid, need_pairing: bool) -> impl std::future::Future<Output = Result<()>>;
     fn device(&self) -> &BluetoothDevice;
     fn into_device(self) -> BluetoothDevice;
 }
@@ -64,7 +67,7 @@ mod tests {
     fn test_timeout() {
         let device = BluetoothDevice::empty();
         let mut session = MockSession::new();
-        let error = session.connect_timeout(&device, Duration::from_secs(1));
+        let error = session.connect_timeout(&device, true, Duration::from_secs(1));
 
         match error {
             Ok(_) => {},
@@ -72,7 +75,7 @@ mod tests {
         }
 
         session.blocked_connect(true);
-        let error = session.connect_timeout(&device, Duration::from_secs(1));
+        let error = session.connect_timeout(&device, true, Duration::from_secs(1));
 
         match error {
             Err(BluetoothError::TimedOut(_)) => {},

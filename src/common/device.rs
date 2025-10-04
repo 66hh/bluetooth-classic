@@ -1,4 +1,4 @@
-use uuid::{uuid, Uuid};
+use uuid::{Uuid, uuid};
 
 use crate::common::mac::{mac_string_to_u64, mac_u64_to_string};
 
@@ -11,16 +11,14 @@ pub struct BluetoothDevice {
 }
 
 impl BluetoothDevice {
-    
     pub fn new(name: String, addr: u64) -> BluetoothDevice {
         return BluetoothDevice {
             name: name.clone(),
-            addr: addr
+            addr: addr,
         };
     }
 
     pub fn new_by_addr_string(name: String, addr: &String) -> Result<BluetoothDevice, ()> {
-
         if let Some(u64_addr) = mac_string_to_u64(&addr) {
             return Ok(BluetoothDevice {
                 name: name.clone(),
@@ -46,5 +44,4 @@ impl BluetoothDevice {
     pub fn addr_string(&self) -> String {
         mac_u64_to_string(self.addr)
     }
-
 }

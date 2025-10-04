@@ -1,4 +1,3 @@
-
 pub fn mac_u64_to_string(addr: u64) -> String {
     let bytes = Vec::from(addr.to_be_bytes());
 

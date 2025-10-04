@@ -8,7 +8,7 @@ pub mod common;
 
 pub mod mock;
 
-//#[cfg(target_os = "windows")]
+#[cfg(target_os = "windows")]
 pub mod windows;
 
 #[derive(Debug, thiserror::Error)]

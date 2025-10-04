@@ -13,7 +13,7 @@ use windows::{
     },
     Foundation::TypedEventHandler,
     Networking::Sockets::StreamSocket,
-    Storage::Streams::{Buffer, InputStreamOptions},
+    Storage::Streams::{Buffer, IBuffer, InputStreamOptions},
 };
 
 use crate::{
@@ -36,10 +36,8 @@ pub struct WinrtSession {
     socket: StreamSocket,
     ready: bool,
     // 持有正在进行的WinRT future，避免在poll中阻塞等待
-    read_future:
-        Option<Pin<Box<dyn std::future::Future<Output = windows::core::Result<Buffer>> + Send>>>,
-    write_future:
-        Option<Pin<Box<dyn std::future::Future<Output = windows::core::Result<u32>> + Send>>>,
+    read_future: Option<Pin<Box<dyn std::future::Future<Output = windows::core::Result<IBuffer>>>>>,
+    write_future: Option<Pin<Box<dyn std::future::Future<Output = windows::core::Result<u32>>>>>,
 }
 
 impl WinrtSession {

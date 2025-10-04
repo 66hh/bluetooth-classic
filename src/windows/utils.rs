@@ -91,3 +91,18 @@ pub fn write_output_buffer(bytes: Vec<u8>) -> core::Result<IBuffer> {
     writer.WriteBytes(&bytes)?;
     writer.DetachBuffer()
 }
+
+pub fn to_hex_string(data: &[u8]) -> String {
+    data.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+pub fn hex_stream_to_bytes(hex: &str) -> Result<Vec<u8>, String> {
+    if hex.len() % 2 != 0 {
+        return Err("Hex string has an odd length".to_string());
+    }
+
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).map_err(|e| e.to_string()))
+        .collect()
+}

@@ -1,7 +1,7 @@
 use std::task::Poll;
 
 use windows::{Devices::{Bluetooth::{self}, Enumeration::{DeviceInformation, DevicePairingKinds}}, Foundation::TypedEventHandler, Networking::Sockets::StreamSocket, Storage::Streams::{Buffer, InputStreamOptions}};
-use tokio::{io::{AsyncRead, AsyncWrite}, runtime::Builder, time};
+use tokio::{io::{AsyncRead, AsyncWrite}, runtime::{self, Builder}, time};
 use uuid::Uuid;
 
 use crate::{common::device::{BluetoothDevice, SPP_UUID}, windows::{pair::pair_handler, utils::{read_input_buffer, winrt_async, winrt_async_action, winrt_async_with_error, winrt_error_wrap, winrt_error_wrap_with_error, winrt_none_error_wrap_with_error, write_output_buffer}, uuid::create_service_id}, BluetoothError, BluetoothSppSession};
@@ -244,10 +244,8 @@ impl AsyncRead for WinrtSession {
             // 读取数据
             match stream.ReadAsync(&buffer, cap, InputStreamOptions::Partial) {
                 Ok(op) => {
-                    let rt = Builder::new_multi_thread()
-                        .enable_all()
-                        .build()
-                        .unwrap();
+                    
+                    let rt = runtime::Handle::current();
 
                     let result: std::task::Poll<std::io::Result<()>> = rt.block_on(async {
                         match op.await {
@@ -318,10 +316,7 @@ impl AsyncWrite for WinrtSession {
                 Ok(b) => {
                     match stream.WriteAsync(&b) {
                         Ok(op) => {
-                            let rt = Builder::new_multi_thread()
-                                .enable_all()
-                                .build()
-                                .unwrap();
+                            let rt = runtime::Handle::current();
 
                             return rt.block_on(async {
                                 match op.await {

@@ -8,7 +8,10 @@ mod tests {
 
     use std::time::Duration;
 
-    use crate::{common::device::{BluetoothDevice, SPP_UUID}, windows::{session::WinrtSession, uuid::create_service_id}, BluetoothSppSession};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio_test::block_on;
+
+    use crate::{common::device::{BluetoothDevice, SPP_UUID}, windows::{session::WinrtSession, utils::hex_stream_to_bytes, uuid::create_service_id}, BluetoothSppSession};
 
     #[test]
     fn test_service_id() {
@@ -43,6 +46,17 @@ mod tests {
         if let Err(e) = err {
             println!("{}", e.to_string())
         }
+
+        block_on(async {
+            let res = winrt.write(&hex_stream_to_bytes("a5a5020016001d4d0101030001000002020000fc03020020000402001027").unwrap()).await;
+            println!("{:?}", res);
+
+            let mut buf: Vec<u8> = Vec::new();
+            let res = winrt.read(&mut buf).await;
+            println!("{:?}", res);
+        })
+        
+
     }
 
 }

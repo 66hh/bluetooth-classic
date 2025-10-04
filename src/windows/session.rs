@@ -1,10 +1,10 @@
 use std::task::Poll;
 
-use windows::{Devices::{Bluetooth::{self}, Enumeration::{DeviceInformation, DevicePairingKinds}}, Foundation::TypedEventHandler, Networking::Sockets::StreamSocket};
+use windows::{Devices::{Bluetooth::{self}, Enumeration::{DeviceInformation, DevicePairingKinds}}, Foundation::TypedEventHandler, Networking::Sockets::StreamSocket, Storage::Streams::{Buffer, InputStreamOptions}};
 use tokio::{io::{AsyncRead, AsyncWrite}, runtime::Builder, time};
 use uuid::Uuid;
 
-use crate::{common::device::{BluetoothDevice, SPP_UUID}, windows::{pair::pair_handler, utils::{winrt_async, winrt_async_action, winrt_async_with_error, winrt_error_wrap, winrt_error_wrap_with_error, winrt_none_error_wrap_with_error}, uuid::create_service_id}, BluetoothError, BluetoothSppSession};
+use crate::{common::device::{BluetoothDevice, SPP_UUID}, windows::{pair::pair_handler, utils::{read_input_buffer, winrt_async, winrt_async_action, winrt_async_with_error, winrt_error_wrap, winrt_error_wrap_with_error, winrt_none_error_wrap_with_error, write_output_buffer}, uuid::create_service_id}, BluetoothError, BluetoothSppSession};
 
 pub struct WinrtSession {
     uuid: Uuid,
@@ -216,10 +216,74 @@ impl AsyncRead for WinrtSession {
 
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
+        _cx: &mut std::task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        Poll::Ready(Ok(()))
+        let self_mut = self.get_mut();
+
+        if self_mut.ready {
+
+            // 获取输入流
+            let stream;
+            match self_mut.socket.InputStream() {
+                Ok(s) => {
+                    stream = s
+                },
+                Err(_) => {
+
+                    // 获取失败
+                    self_mut.ready = false;
+                    return Poll::Pending;
+                },
+            }
+
+            // 创建buffer
+            let cap = buf.capacity() as u32;
+            let buffer = Buffer::Create(cap).unwrap();
+
+            // 读取数据
+            match stream.ReadAsync(&buffer, cap, InputStreamOptions::Partial) {
+                Ok(op) => {
+                    let rt = Builder::new_multi_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap();
+
+                    let result: std::task::Poll<std::io::Result<()>> = rt.block_on(async {
+                        match op.await {
+                            Ok(b) => {
+
+                                // winrt buffer写入buf
+                                match read_input_buffer(b) {
+                                    Ok(vec) => {
+                                        buf.put_slice(&vec);
+                                        Poll::Ready(Ok(()))
+                                    },
+                                    Err(_) => {
+                                        self_mut.ready = false;
+                                        return Poll::Pending;
+                                    },
+                                }
+                            },
+                            Err(_) => {
+                                self_mut.ready = false;
+                                return Poll::Pending;
+                            }
+                        }
+                    });
+
+                    return result;
+                },
+                Err(_) => {
+                    self_mut.ready = false;
+                    return Poll::Pending;
+                },
+            }
+            
+        } else {
+            Poll::Pending
+        }
+
     }
 
 }
@@ -231,10 +295,24 @@ impl AsyncWrite for WinrtSession {
         _cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<Result<usize, std::io::Error>> {
-        Poll::Ready(Ok(0))
+
+        let self_mut = self.get_mut();
+
+        if self_mut.ready {
+            match write_output_buffer(buf.to_vec()) {
+                Ok(n) => return Poll::Ready(Ok(n)),
+                Err(_) => {
+                    self_mut.ready = false;
+                    return Poll::Pending
+                },
+            }
+        } else {
+            return Poll::Pending
+        }
+
     }
 
-    fn poll_flush(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), std::io::Error>> {
+    fn poll_flush(self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), std::io::Error>> {
         Poll::Ready(Ok(()))
     }
 

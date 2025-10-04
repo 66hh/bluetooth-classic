@@ -1,4 +1,4 @@
-use windows::{core};
+use windows::{core, Storage::Streams::{DataReader, DataWriter, IBuffer}};
 
 use crate::BluetoothError;
 
@@ -76,4 +76,19 @@ pub async fn winrt_async_action_with_error(result: core::Result<windows_future::
         },
         Err(_) => return Err(error),
     }
+}
+
+pub fn read_input_buffer(buffer: IBuffer) -> core::Result<Vec<u8>> {
+    let reader = DataReader::FromBuffer(&buffer)?;
+    let len = reader.UnconsumedBufferLength()? as usize;
+    let mut value = vec![0; len];
+    reader.ReadBytes(value.as_mut_slice())?;
+    Ok(value.to_vec())
+}
+
+pub fn write_output_buffer(bytes: Vec<u8>) -> core::Result<usize> {
+    let writer = DataWriter::new()?;
+    writer.WriteBytes(&bytes)?;
+    writer.DetachBuffer()?;
+    Ok(bytes.len())
 }

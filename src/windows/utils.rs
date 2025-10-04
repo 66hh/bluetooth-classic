@@ -86,9 +86,8 @@ pub fn read_input_buffer(buffer: IBuffer) -> core::Result<Vec<u8>> {
     Ok(value.to_vec())
 }
 
-pub fn write_output_buffer(bytes: Vec<u8>) -> core::Result<usize> {
+pub fn write_output_buffer(bytes: Vec<u8>) -> core::Result<IBuffer> {
     let writer = DataWriter::new()?;
     writer.WriteBytes(&bytes)?;
-    writer.DetachBuffer()?;
-    Ok(bytes.len())
+    writer.DetachBuffer()
 }

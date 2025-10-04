@@ -299,8 +299,46 @@ impl AsyncWrite for WinrtSession {
         let self_mut = self.get_mut();
 
         if self_mut.ready {
+
+            // 获取输出流
+            let stream;
+            match self_mut.socket.OutputStream() {
+                Ok(s) => {
+                    stream = s
+                },
+                Err(_) => {
+
+                    // 获取失败
+                    self_mut.ready = false;
+                    return Poll::Pending;
+                },
+            }
+            
             match write_output_buffer(buf.to_vec()) {
-                Ok(n) => return Poll::Ready(Ok(n)),
+                Ok(b) => {
+                    match stream.WriteAsync(&b) {
+                        Ok(op) => {
+                            let rt = Builder::new_multi_thread()
+                                .enable_all()
+                                .build()
+                                .unwrap();
+
+                            return rt.block_on(async {
+                                match op.await {
+                                    Ok(r) => return Poll::Ready(Ok(r as usize)),
+                                    Err(_) => {
+                                        self_mut.ready = false;
+                                        return Poll::Pending
+                                    },
+                                }
+                            });
+                        },
+                        Err(_) => {
+                            self_mut.ready = false;
+                            return Poll::Pending
+                        },
+                    }
+                },
                 Err(_) => {
                     self_mut.ready = false;
                     return Poll::Pending
